@@ -70,32 +70,48 @@ Shelf's rough bounding box (lat 56–82°N, lon −5–35°E) are kept but
 flagged as a warning — a soft check, not a hard rule, since other sources
 may legitimately fall outside it.
 
-**Schema change made for this step**: added `Wellbore.npdid_wellbore`
-(nullable, unique, indexed) — SODIR's own stable ID, needed so
-re-ingesting the same export is idempotent (migration
+**Schema changes**: `Wellbore.npdid_wellbore` (nullable, unique,
+indexed) — SODIR's own stable ID, needed so re-ingesting the same
+export is idempotent (migration
 `815f8c6c6353_add_wellbore_npdid_wellbore_for_source_`).
+`Wellbore.volve_source_id` (nullable) — the raw Volve identifier,
+added when the Volve survey ingestion needed somewhere to preserve
+provenance for the canonical-key match (migration
+`d8d2a40841b4_add_wellbore_volve_source_id_for_volve_`).
 
-## Volve → Wellbore (survey stations only)
+## Volve → Wellbore (survey stations)
 
-Source: Volve's raw per-wellbore directional survey files, named
-`<well>_Survey_Data.csv` (`/` replaced by `_`, e.g.
-`15_9-F-11_Survey_Data.csv`), columns `md,inc,azi` (measured depth in m,
-inclination in deg, azimuth in deg) — confirmed against public
-descriptions of Volve's raw deviation-survey exports.
+Source: Volve's per-wellbore directional survey files, named
+`<id>_Survey_Data.csv`, columns `MD,Incl,Azi,TVD,NS,EW,VS,DLS,Build,Turn`
+— confirmed against a real file (see `ingestion/VOLVE_AUDIT.md`). We use
+`MD,TVD,NS,EW` only; `Incl`/`Azi` are read but intentionally not used
+(see below), and `VS`/`DLS`/`Build`/`Turn` look like a third party's own
+derived QC columns, not guaranteed present in every real file.
+
+**Identifier matching**: an earlier version of this module tried to
+reconstruct the SODIR-style name from the filename (assuming only the
+quad/block separator became `_`). A real file
+(`15_9_F_11_A_Survey_Data.csv`) showed *every* separator becomes `_`,
+and SODIR/WITSML/Volve each spell the same wellbore differently — see
+`ingestion/identifiers.py`. Matching is now done on a canonical key
+(alphanumeric-only, uppercased) computed from both sides; the raw
+filename-derived identifier is preserved as-is (never reconstructed)
+and stored on `Wellbore.volve_source_id` once a survey is attached, for
+provenance.
 
 | Volve field | Parsed as | Target | Required? |
 |---|---|---|---|
-| filename | str → wellbore name | lookup key into existing `Wellbore.name` | required — the wellbore must already exist (from SODIR ingestion) |
-| `md` | float, m, ≥0 | station MD → aggregated into `Wellbore.md_top_m` / `md_bottom_m` (min/max across stations) | required per row |
-| `inc` | float, 0–180° | kept on the normalized `SurveyStation`, **not persisted** — no per-station table in the schema yet | required per row |
-| `azi` | float, 0–360° | kept on the normalized `SurveyStation`, **not persisted** | required per row |
-| — | — | `Wellbore.trajectory` (PostGIS LineString), `Wellbore.tvd_bottom_m` | **not computed in this step** |
+| filename | str → raw identifier (`ingestion/identifiers.py`) | matched to `Wellbore` by canonical key; raw string → `Wellbore.volve_source_id` | required — the wellbore must already exist (from SODIR ingestion) |
+| `MD` | float, m, ≥0 | station MD → `Wellbore.md_top_m` / `md_bottom_m` (min/max across stations) | required per row |
+| `TVD` | float, m, ≥0 | station TVD → `Wellbore.tvd_bottom_m` (max across stations) | required per row |
+| `NS`, `EW` | float, m (offset from the survey's tie-in point) | combined with the parent `Well.location` via a local equirectangular approximation → each `Wellbore.trajectory` point (PostGIS LineString) | required per row |
+| `Incl`, `Azi` | float | read, not used | not used — we use Volve's own supplied MD/TVD/NS/EW rather than reconstructing a trajectory from inclination/azimuth ourselves |
 
-Building the actual 3D trajectory (and TVD) from `md/inc/azi` needs a
-minimum-curvature calculation — a real algorithm, not a field mapping, so
-it's explicitly deferred to a later ingestion step. `md_top_m`/
-`md_bottom_m` are populated now because they're a direct min/max, not a
-computation.
+Volve's files already supply computed TVD/NS/EW per station, so no
+minimum-curvature reconstruction is needed on our side — just a
+NS/EW-offset → absolute-lon/lat conversion (not survey-grade, but
+consistent with the accuracy bar used for the ED50→WGS84 transform:
+plenty for map-scale display).
 
 Volve well *header* fields (operator, depths, coordinates) are not
 separately mapped: Volve's wells are the same NPD/SODIR-registered wells

@@ -32,6 +32,12 @@ class Wellbore(Base):
         String(32), unique=True, index=True, nullable=True
     )
 
+    # Raw Volve-side identifier (e.g. "15_9_F_11_A", exactly as found in
+    # the source filename), preserved once a Volve survey is attached —
+    # matching is by canonical key (ingestion/identifiers.py), not this
+    # field, but the original string is kept for provenance/traceability.
+    volve_source_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     trajectory: Mapped[Any | None] = mapped_column(
         Geometry(geometry_type="LINESTRING", srid=4326), nullable=True
     )

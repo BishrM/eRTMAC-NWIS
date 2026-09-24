@@ -33,7 +33,7 @@ def test_clean_ed50_row_is_transformed_to_wgs84():
     assert row.well.spud_date.isoformat() == "2013-03-07"
     assert row.well.completion_date.isoformat() == "2013-05-12"
     assert row.wellbore.name == "15/9-F-11"
-    assert row.wellbore.npdid_wellbore == "5001"
+    assert row.wellbore.npdid_wellbore == "7078"
 
     warning_fields = {i.field for i in row.issues}
     assert "wlbGeodeticDatum" in warning_fields  # "transformed from ED50" note

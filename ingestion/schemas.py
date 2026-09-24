@@ -62,13 +62,15 @@ class SodirIngestionResult:
 @dataclass
 class SurveyStation:
     md_m: float
-    inclination_deg: float
-    azimuth_deg: float
+    tvd_m: float
+    ns_m: float  # northing offset from the survey's tie-in point, metres
+    ew_m: float  # easting offset from the survey's tie-in point, metres
 
 
 @dataclass
 class VolveSurveyIngestionResult:
-    wellbore_name: str
+    source_identifier: str  # raw, as found in the filename, e.g. "15_9_F_11_A"
+    canonical_key: str  # canonical_wellbore_key(source_identifier), for matching
     stations: list[SurveyStation] = field(default_factory=list)
     issues: list[IngestionIssue] = field(default_factory=list)
 

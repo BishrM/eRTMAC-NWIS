@@ -31,6 +31,9 @@ data/*
 !data/sodir/
 data/sodir/*
 !data/sodir/README.md
+!data/volve/
+data/volve/*
+!data/volve/README.md
 
 # IDE
 .vscode/

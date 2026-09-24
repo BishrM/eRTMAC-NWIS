@@ -1,41 +1,34 @@
 """Parse Volve directional-survey CSVs into SurveyStation lists.
 
-Source: Volve's raw per-wellbore deviation survey files, named
-"<well>_Survey_Data.csv" with '/' replaced by '_' (e.g.
-"15_9-F-11_Survey_Data.csv" for wellbore "15/9-F-11"), columns
-"md,inc,azi" (measured depth in m, inclination in deg, azimuth in deg).
+Source: Volve's per-wellbore directional survey files, named
+"<id>_Survey_Data.csv" where <id> has *every* separator ('/', '-', ' ')
+replaced with '_' (e.g. "15_9_F_11_A_Survey_Data.csv" for wellbore
+"15/9-F-11 A") — confirmed against a real file, see
+ingestion/VOLVE_AUDIT.md. Columns: MD, Incl, Azi, TVD, NS, EW, VS, DLS,
+Build, Turn (measured depth, inclination, azimuth, true vertical depth,
+northing/easting offset from a tie-in point, all in metres/degrees).
 
-This module only maps and validates those raw stations — it does not
-compute a 3D trajectory (that needs a minimum-curvature calculation from
-md/inc/azi, which is a separate, later step). Only the MD range
-(Wellbore.md_top_m / md_bottom_m) is derived here.
+Per the audit, Volve's files already supply computed TVD/NS/EW per
+station — we use those directly (MD, TVD, NS, EW) and do not recompute
+a trajectory from Incl/Azi ourselves. Incl/Azi/VS/DLS/Build/Turn are
+read from the row but not used: DLS/Build/Turn in particular look like
+a third party's own derived QC columns, not something to depend on
+being present in every real file.
 
 A Volve wellbore must already exist (created via SODIR ingestion) before
-its survey can be attached — see loaders.attach_volve_survey.
+its survey can be attached — see loaders.attach_volve_survey, which
+matches by canonical_wellbore_key (ingestion/identifiers.py), not by
+reconstructing the SODIR name from the filename.
 """
 
 import csv
 from pathlib import Path
 
+from ingestion.identifiers import WellboreIdentifier, volve_identifier_from_filename
 from ingestion.schemas import IngestionIssue, SurveyStation, VolveSurveyIngestionResult
 from ingestion.validators import required_float
 
-REQUIRED_COLUMNS = {"md", "inc", "azi"}
-
-
-def wellbore_name_from_filename(filename: str) -> str:
-    """"15_9-F-11_Survey_Data.csv" -> "15/9-F-11".
-
-    Volve encodes the wellbore's '/' as '_' in filenames. The NPD-style
-    name is "<quad>/<block>-<suffix>", so the first underscore is the one
-    to restore as a slash.
-    """
-    stem = Path(filename).stem
-    stem = stem.removesuffix("_Survey_Data")
-    quad, sep, rest = stem.partition("_")
-    if not sep:
-        raise ValueError(f"cannot derive wellbore name from filename '{filename}'")
-    return f"{quad}/{rest}"
+REQUIRED_COLUMNS = {"MD", "TVD", "NS", "EW"}
 
 
 def parse_volve_survey_row(
@@ -43,26 +36,27 @@ def parse_volve_survey_row(
 ) -> tuple[SurveyStation | None, list[IngestionIssue]]:
     issues: list[IngestionIssue] = []
 
-    md = required_float(row.get("md"), "md", issues, min_value=0)
-    inclination = required_float(row.get("inc"), "inc", issues, min_value=0, max_value=180)
-    azimuth = required_float(row.get("azi"), "azi", issues, min_value=0, max_value=360)
+    md = required_float(row.get("MD"), "MD", issues, min_value=0)
+    tvd = required_float(row.get("TVD"), "TVD", issues, min_value=0)
+    ns = required_float(row.get("NS"), "NS", issues)
+    ew = required_float(row.get("EW"), "EW", issues)
 
     if md is not None and previous_md is not None and md < previous_md:
         issues.append(
             IngestionIssue(
-                "md", f"row {row_index}: md {md} is less than previous station's {previous_md}", "warning"
+                "MD", f"row {row_index}: MD {md} is less than previous station's {previous_md}", "warning"
             )
         )
 
-    if any(i.severity == "error" for i in issues) or md is None or inclination is None or azimuth is None:
+    if any(i.severity == "error" for i in issues) or None in (md, tvd, ns, ew):
         return None, issues
 
-    return SurveyStation(md_m=md, inclination_deg=inclination, azimuth_deg=azimuth), issues
+    return SurveyStation(md_m=md, tvd_m=tvd, ns_m=ns, ew_m=ew), issues
 
 
 def parse_volve_survey_csv(path: str | Path) -> VolveSurveyIngestionResult:
     path = Path(path)
-    wellbore_name = wellbore_name_from_filename(path.name)
+    identifier: WellboreIdentifier = volve_identifier_from_filename(path.name)
 
     stations: list[SurveyStation] = []
     issues: list[IngestionIssue] = []
@@ -81,4 +75,13 @@ def parse_volve_survey_csv(path: str | Path) -> VolveSurveyIngestionResult:
                 stations.append(station)
                 previous_md = station.md_m
 
-    return VolveSurveyIngestionResult(wellbore_name=wellbore_name, stations=stations, issues=issues)
+    # Defensive: build downstream (trajectory geometry) assumes MD order,
+    # even though out-of-order input is only a warning above, not rejected.
+    stations.sort(key=lambda s: s.md_m)
+
+    return VolveSurveyIngestionResult(
+        source_identifier=identifier.raw,
+        canonical_key=identifier.canonical_key,
+        stations=stations,
+        issues=issues,
+    )

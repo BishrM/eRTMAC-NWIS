@@ -3,22 +3,33 @@ tables. This is the only module in `ingestion/` that touches the
 database.
 """
 
+import math
+
 from ingestion import _backend_path  # noqa: F401  (wires sys.path before the app.* imports below)
 
 from geoalchemy2.shape import from_shape
-from shapely.geometry import Point
+from shapely.geometry import LineString, Point
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.well import Well
 from app.models.wellbore import Wellbore
+from app.services.geo import point_to_lonlat
 
+from ingestion.identifiers import canonical_wellbore_key
 from ingestion.schemas import NormalizedWell, NormalizedWellbore, SodirIngestionResult, VolveSurveyIngestionResult
+
+# Mean Earth radius, for a local equirectangular NS/EW-offset -> lon/lat
+# approximation. Not survey-grade, but consistent with the accuracy bar
+# used elsewhere here (see ingestion/geodesy.py) — plenty for map-scale
+# trajectory display.
+_EARTH_RADIUS_M = 6_371_000.0
 
 
 class IngestionError(Exception):
     """Raised when a record can't be loaded (missing prerequisite data,
-    unresolved validation errors) — never to paper over bad data."""
+    unresolved validation errors, an ambiguous match) — never to paper
+    over bad data."""
 
 
 def upsert_well(db: Session, normalized: NormalizedWell) -> Well:
@@ -74,24 +85,61 @@ def ingest_sodir_result(db: Session, result: SodirIngestionResult) -> tuple[Well
     return well, wellbore
 
 
+def _find_wellbore_by_canonical_key(db: Session, canonical_key: str, source_identifier: str) -> Wellbore:
+    """Match a Volve source identifier to exactly one existing Wellbore,
+    by canonical key (see ingestion/identifiers.py) — never by guessing
+    separator positions in the filename. Raises if zero or more than one
+    wellbore matches, rather than silently picking one."""
+    all_wellbores = db.execute(select(Wellbore)).scalars().all()
+    matches = [wb for wb in all_wellbores if canonical_wellbore_key(wb.name) == canonical_key]
+
+    if not matches:
+        raise IngestionError(
+            f"no existing wellbore matches Volve identifier '{source_identifier}' "
+            f"(canonical key '{canonical_key}') — ingest its SODIR metadata first"
+        )
+    if len(matches) > 1:
+        names = sorted(wb.name for wb in matches)
+        raise IngestionError(
+            f"ambiguous match for Volve identifier '{source_identifier}': "
+            f"{len(matches)} wellbores share canonical key '{canonical_key}': {names}"
+        )
+    return matches[0]
+
+
+def _offset_to_lonlat(wellhead_lon: float, wellhead_lat: float, ns_m: float, ew_m: float) -> tuple[float, float]:
+    """Local equirectangular approximation of a northing/easting offset
+    (metres, relative to the wellhead) as an absolute WGS84 lon/lat."""
+    lat = wellhead_lat + math.degrees(ns_m / _EARTH_RADIUS_M)
+    lon = wellhead_lon + math.degrees(ew_m / (_EARTH_RADIUS_M * math.cos(math.radians(wellhead_lat))))
+    return lon, lat
+
+
 def attach_volve_survey(db: Session, result: VolveSurveyIngestionResult) -> Wellbore:
     if not result.stations:
-        raise IngestionError(f"no valid survey stations parsed for '{result.wellbore_name}'")
+        raise IngestionError(f"no valid survey stations parsed for '{result.source_identifier}'")
 
-    wellbore = db.execute(
-        select(Wellbore).where(Wellbore.name == result.wellbore_name)
-    ).scalar_one_or_none()
-    if wellbore is None:
+    wellbore = _find_wellbore_by_canonical_key(db, result.canonical_key, result.source_identifier)
+
+    well = db.get(Well, wellbore.well_id)
+    if well is None or well.location is None:
         raise IngestionError(
-            f"no existing wellbore named '{result.wellbore_name}' — ingest its SODIR "
-            "metadata before attaching a Volve survey"
+            f"wellbore '{wellbore.name}' has no parent well surface location — "
+            "cannot place its trajectory without one"
         )
+    wellhead_lon, wellhead_lat = point_to_lonlat(well.location)
 
     mds = [s.md_m for s in result.stations]
     wellbore.md_top_m = min(mds)
     wellbore.md_bottom_m = max(mds)
-    # Full 3D trajectory (Wellbore.trajectory / tvd_bottom_m) needs a
-    # minimum-curvature calculation from md/inc/azi — deferred, see volve.py.
+    wellbore.tvd_bottom_m = max(s.tvd_m for s in result.stations)
+    wellbore.volve_source_id = result.source_identifier  # provenance: raw Volve identifier
+
+    # result.stations is already MD-sorted (volve.py) — build the surface
+    # trajectory from each station's NS/EW offset, as supplied by Volve
+    # (not reconstructed from inclination/azimuth).
+    line_points = [_offset_to_lonlat(wellhead_lon, wellhead_lat, s.ns_m, s.ew_m) for s in result.stations]
+    wellbore.trajectory = from_shape(LineString(line_points), srid=4326)
 
     db.flush()
     return wellbore
