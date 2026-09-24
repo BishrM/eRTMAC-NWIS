@@ -1,0 +1,5 @@
+wlbWellboreName,wlbWell,wlbNpdidWellbore,wlbDrillingOperator,wlbField,wlbWaterDepth,wlbTotalDepth,wlbFinalVerticalDepth,wlbFormationAtTd,wlbEntryDate,wlbCompletionDate,wlbNsDecDeg,wlbEwDecDeg,wlbGeodeticDatum
+15/9-F-11,15/9-F-11,5001,Statoil Petroleum AS,VOLVE,80.2,3339,2999,Hugin Fm.,07.08.2007,12.10.2007,58.440514,1.887762,WGS84
+16/2-F-9,16/2-F-9,5002,Statoil Petroleum AS,,110.5,2800,,,01.03.2010,,58.10,2.05,WGS84
+,15/9-F-99,5003,Test Operator,TESTFIELD,-5,4000,5000,Unknown Fm.,31.13.2099,,58.5,1.9,WGS84
+34/10-A-1,34/10-A-1,5004,Equinor Energy AS,VOLVE,90,3000,2900,Skagerrak Fm.,01.01.2015,01.03.2015,58.5,2.0,ED50

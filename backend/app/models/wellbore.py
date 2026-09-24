@@ -24,7 +24,13 @@ class Wellbore(Base):
         UUID(as_uuid=True), ForeignKey("wells.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
-    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+
+    # Stable external ID from the source registry (e.g. SODIR's wlbNpdidWellbore),
+    # used as the upsert/dedup key for re-running ingestion idempotently.
+    npdid_wellbore: Mapped[str | None] = mapped_column(
+        String(32), unique=True, index=True, nullable=True
+    )
 
     trajectory: Mapped[Any | None] = mapped_column(
         Geometry(geometry_type="LINESTRING", srid=4326), nullable=True
