@@ -31,6 +31,15 @@ def test_get_well_by_well_id(client, make_well):
     assert resp.json()["name"] == "Demo Beta"
 
 
+def test_get_well_with_slash_in_well_id(client, make_well):
+    # Real SODIR/NPD well IDs contain '/' (e.g. "1/3-10") — the route must
+    # use a :path converter, not the default single-segment matcher.
+    make_well(well_id="1/3-10", name="Real-shaped ID")
+    resp = client.get("/wells/1%2F3-10")
+    assert resp.status_code == 200
+    assert resp.json()["well_id"] == "1/3-10"
+
+
 def test_get_well_not_found(client):
     resp = client.get("/wells/does-not-exist")
     assert resp.status_code == 404

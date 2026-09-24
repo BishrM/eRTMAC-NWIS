@@ -13,6 +13,7 @@ that well name — the loader upserts the Well once per well_id.
 import csv
 from pathlib import Path
 
+from ingestion.geodesy import ed50_to_wgs84
 from ingestion.schemas import IngestionIssue, NormalizedWell, NormalizedWellbore, SodirIngestionResult
 from ingestion.validators import (
     check_ncs_plausibility,
@@ -80,14 +81,22 @@ def parse_sodir_row(row: dict[str, str], row_index: int) -> SodirIngestionResult
                     "warning",
                 )
             )
+    elif datum == "ED50":
+        # SODIR's actual, near-universal datum for wellbore positions
+        # (confirmed against real export data and SODIR's own field docs,
+        # not an edge case) — transform to WGS84 rather than drop it.
+        if latitude is not None and longitude is not None:
+            latitude, longitude = ed50_to_wgs84(latitude, longitude)
+            issues.append(
+                IngestionIssue("wlbGeodeticDatum", "coordinates transformed from ED50 to WGS84", "warning")
+            )
     elif datum != SUPPORTED_DATUM:
-        # ED50 (and any other non-WGS84 datum) needs a proper coordinate
-        # transform we don't implement yet — skip ingesting the point
-        # rather than silently storing a wrong position.
+        # Any other (unexpected) datum: no transform implemented — drop
+        # the point rather than silently storing a wrong position.
         issues.append(
             IngestionIssue(
                 "wlbGeodeticDatum",
-                f"datum '{datum}' is not supported yet (only WGS84) — coordinates dropped",
+                f"datum '{datum}' is not supported (only WGS84/ED50) — coordinates dropped",
                 "warning",
             )
         )

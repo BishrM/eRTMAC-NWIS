@@ -17,8 +17,10 @@ def list_wells(
     return well_service.list_wells(db, limit=limit, offset=offset)
 
 
-@router.get("/{well_id}", response_model=WellRead)
+@router.get("/{well_id:path}", response_model=WellRead)
 def get_well(well_id: str, db: Session = Depends(get_db)) -> WellRead:
+    # SODIR/NPD well IDs contain '/' (e.g. "1/3-10"), so the default
+    # single-segment path converter doesn't match them — use :path.
     well = well_service.get_well_by_well_id(db, well_id)
     if well is None:
         raise HTTPException(status_code=404, detail=f"Well '{well_id}' not found")

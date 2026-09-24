@@ -45,19 +45,25 @@ name. Field names verified against SODIR's own Wellbore Attributes page
 | `wlbCompletionDate` | date, `DD.MM.YYYY` | `Well.completion_date` | optional (blank if still active) |
 | `wlbNsDecDeg` | float, ±90 | `Well.location` (lat) | optional, but see datum note |
 | `wlbEwDecDeg` | float, ±180 | `Well.location` (lon) | optional, but see datum note |
-| `wlbGeodeticDatum` | str | validation only | see below |
+| `wlbGeodeticDatum` | str | drives coordinate transform, not stored | see below |
 | *(constant)* | `"Norway"` | `Well.country` | — |
 | *(constant)* | `"sodir"` | `Well.source`, `Wellbore.source` | — |
 | `wlbWellboreName` | str | `Wellbore.name` | required |
 | `wlbNpdidWellbore` | str | `Wellbore.npdid_wellbore` | required — upsert/dedup key |
 
-**Datum handling**: SODIR positions are only ingested when
-`wlbGeodeticDatum == "WGS84"`. A blank datum is accepted with a warning
-(assumed WGS84). Any other datum (chiefly legacy **ED50** positions) is
-accepted as a row but its coordinates are dropped with a warning —
-converting ED50→WGS84 needs a real geodetic transform (`pyproj`), which is
-deliberately out of scope for this foundation step so we never store a
-silently-wrong position.
+**Datum handling — revised after real-data sanity check (2026-09-24)**:
+the original assumption was that positions would mostly be WGS84 with
+ED50 as a rare legacy exception. A real SODIR export showed the
+opposite: `wlbGeodeticDatum` is `ED50` for essentially every wellbore
+(exploration and development alike), confirmed against SODIR's own field
+docs ("wlbGeodeticDatum ... Example of legal values: ED50"). Dropping
+ED50 coordinates — the original policy — would leave almost no well with
+a position, breaking map visualization entirely. So `ingestion/geodesy.py`
+now transforms ED50 (EPSG:4230) → WGS84 (EPSG:4326) via `pyproj`
+(standard-accuracy transform, ~1–3 m in NW Europe — plenty for map-scale
+display). A blank datum is still accepted with a warning (assumed
+WGS84). Any *other* (unrecognized) datum still has its coordinates
+dropped with a warning, as a safety net.
 
 **Plausibility check**: coordinates outside the Norwegian Continental
 Shelf's rough bounding box (lat 56–82°N, lon −5–35°E) are kept but
