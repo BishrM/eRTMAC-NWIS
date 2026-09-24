@@ -18,6 +18,30 @@ See [CLAUDE.md](./CLAUDE.md) for full project scope, architecture, and engineeri
 - `tests/` — test suites
 - `docs/` — project documentation
 
+## Development
+
+Start infrastructure (Postgres+PostGIS, Qdrant):
+
+```
+docker compose up -d
+```
+
+Backend (FastAPI):
+
+```
+cd backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head        # apply DB migrations
+uvicorn app.main:app --reload
+pytest                      # run tests (requires docker compose up)
+```
+
+Endpoints: `GET /health`, `GET /wells`, `GET /wells/{well_id}`.
+
 ## Status
 
-Project scaffolding only. No implementation yet.
+Infra (Postgres+PostGIS, Qdrant) and the initial backend data layer are up:
+SQLAlchemy models + Alembic migrations for wells/wellbores/events/source_documents,
+a FastAPI app with health + well list/read endpoints, and tests.
+No frontend, ingestion, OCR, or RAG yet.
