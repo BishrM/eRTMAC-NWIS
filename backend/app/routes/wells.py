@@ -2,9 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.deps import get_db
+from app.models.event import EventType
+from app.schemas.historical_events import HistoricalEventIntelligenceResponse
 from app.schemas.similarity import SimilarWellsResponse
 from app.schemas.well import WellListResponse, WellRead
-from app.services import similarity_service, well_service
+from app.services import historical_event_service, similarity_service, well_service
+from app.services.historical_event_service import HistoricalEventQuery
 
 router = APIRouter(prefix="/wells", tags=["wells"])
 
@@ -28,6 +31,34 @@ def get_similar_wells(
     db: Session = Depends(get_db),
 ) -> SimilarWellsResponse:
     result = similarity_service.find_similar_wells(db, well_id, top_k=top_k)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Well '{well_id}' not found")
+    return result
+
+
+@router.get("/{well_id:path}/historical-events", response_model=HistoricalEventIntelligenceResponse)
+def get_historical_events(
+    well_id: str,
+    top_k: int = Query(10, ge=1, le=100),
+    event_type: EventType | None = Query(None),
+    min_similarity: float | None = Query(None, ge=0.0, le=1.0),
+    depth_md_min: float | None = Query(
+        None, ge=0, description="Filters by each event's OWN recorded depth_md_m -- not a claim that this depth is equivalent to the current well's."
+    ),
+    depth_md_max: float | None = Query(None, ge=0),
+    db: Session = Depends(get_db),
+) -> HistoricalEventIntelligenceResponse:
+    result = historical_event_service.get_historical_events_for_similar_wells(
+        db,
+        well_id,
+        query=HistoricalEventQuery(
+            top_k=top_k,
+            event_type=event_type,
+            min_similarity=min_similarity,
+            depth_md_min=depth_md_min,
+            depth_md_max=depth_md_max,
+        ),
+    )
     if result is None:
         raise HTTPException(status_code=404, detail=f"Well '{well_id}' not found")
     return result

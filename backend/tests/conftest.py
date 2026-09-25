@@ -138,3 +138,28 @@ def make_wellbore(db_session: Session):
         return wellbore
 
     return _make
+
+
+@pytest.fixture()
+def make_event(db_session: Session):
+    """Factory for an Event under a given Well (and optionally a
+    specific Wellbore)."""
+    from app.models.event import Event
+
+    def _make(well, wellbore=None, **overrides):
+        defaults = dict(
+            well_id=well.id,
+            wellbore_id=wellbore.id if wellbore is not None else None,
+            event_type="stuck_pipe",
+            description="Demo test event.",
+            source="demo",
+            source_event_id=f"demo-evt-{uuid.uuid4().hex[:8]}",
+        )
+        defaults.update(overrides)
+        event = Event(**defaults)
+        db_session.add(event)
+        db_session.commit()
+        db_session.refresh(event)
+        return event
+
+    return _make
