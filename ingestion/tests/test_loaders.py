@@ -7,11 +7,17 @@ from geoalchemy2.shape import to_shape
 from ingestion.loaders import IngestionError, attach_volve_survey, ingest_sodir_result
 from ingestion.sodir import parse_sodir_csv
 from ingestion.volve import parse_volve_survey_csv
+from ingestion.witsml import parse_witsml_trajectory_xml
 from app.models.well import Well
 from app.models.wellbore import Wellbore
 
 SODIR_FIXTURE = Path(__file__).parent / "fixtures" / "sodir_wellbore_sample.csv"
 VOLVE_FIXTURE = Path(__file__).parent / "fixtures" / "15_9_F_11_A_Survey_Data.csv"
+WITSML_COUNTRY_PREFIX_FIXTURE = Path(__file__).parent / "fixtures" / "witsml_trajectory_country_prefix.xml"
+WITSML_MAIN_WELLBORE_FIXTURE = Path(__file__).parent / "fixtures" / "witsml_trajectory_main_wellbore.xml"
+WITSML_UNMATCHED_SIDETRACK_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "witsml_trajectory_unmatched_sidetrack.xml"
+)
 
 
 def _ingest_sodir_wellbore(db_session, wellbore_name: str):
@@ -140,3 +146,59 @@ def test_attach_volve_survey_is_idempotent(db_session):
 
     wellbores = db_session.query(Wellbore).filter_by(name="15/9-F-11 A").all()
     assert len(wellbores) == 1  # no duplicate wellbore association created
+
+
+# --- WITSML trajectory attach (real second Volve survey format) -------------
+
+
+def test_attach_witsml_survey_with_country_prefix_matches_base_wellbore(db_session):
+    _, base_wellbore = _ingest_sodir_wellbore(db_session, "15/9-F-11")
+    _ingest_sodir_wellbore(db_session, "15/9-F-11 A")  # sidetrack must stay untouched
+
+    survey_result = parse_witsml_trajectory_xml(WITSML_COUNTRY_PREFIX_FIXTURE)[0]
+    assert survey_result.canonical_key == "159F11"
+
+    wellbore = attach_volve_survey(db_session, survey_result)
+
+    assert wellbore.id == base_wellbore.id
+    assert wellbore.name == "15/9-F-11"
+    assert wellbore.md_top_m == 0
+    assert wellbore.md_bottom_m == 500.0
+    assert wellbore.tvd_bottom_m == 497.2
+    assert wellbore.volve_source_id == "NO 15/9-F-11"  # raw WITSML name, prefix preserved
+    assert wellbore.trajectory is not None
+
+    sidetrack = db_session.query(Wellbore).filter_by(name="15/9-F-11 A").one()
+    assert sidetrack.md_top_m is None
+
+
+def test_attach_witsml_survey_strips_main_wellbore_suffix_before_matching(db_session):
+    _, base_wellbore = _ingest_sodir_wellbore(db_session, "15/9-F-11")
+
+    survey_result = parse_witsml_trajectory_xml(WITSML_MAIN_WELLBORE_FIXTURE)[0]
+    wellbore = attach_volve_survey(db_session, survey_result)
+
+    assert wellbore.id == base_wellbore.id
+    assert wellbore.volve_source_id == "15/9-F-11"  # "- Main Wellbore" suffix stripped
+
+
+def test_attach_witsml_survey_for_unmatched_sidetrack_raises(db_session):
+    # Real WITSML data includes technical sidetracks (e.g. "T2") that are
+    # not among SODIR's registered wellbores for this well — must be
+    # rejected explicitly, never fabricated or force-matched.
+    _ingest_sodir_wellbore(db_session, "15/9-F-11")
+    _ingest_sodir_wellbore(db_session, "15/9-F-11 A")
+
+    survey_result = parse_witsml_trajectory_xml(WITSML_UNMATCHED_SIDETRACK_FIXTURE)[0]
+    with pytest.raises(IngestionError, match="no existing wellbore matches"):
+        attach_volve_survey(db_session, survey_result)
+
+
+def test_attach_witsml_survey_is_idempotent(db_session):
+    _ingest_sodir_wellbore(db_session, "15/9-F-11")
+    survey_result = parse_witsml_trajectory_xml(WITSML_COUNTRY_PREFIX_FIXTURE)[0]
+    attach_volve_survey(db_session, survey_result)
+    attach_volve_survey(db_session, survey_result)  # re-run
+
+    wellbores = db_session.query(Wellbore).filter_by(name="15/9-F-11").all()
+    assert len(wellbores) == 1

@@ -20,10 +20,17 @@ from dataclasses import dataclass
 
 _NON_ALNUM = re.compile(r"[^A-Za-z0-9]+")
 
+# WITSML headers prefix the well name with a country code, e.g.
+# "NO 15/9-F-11 A" (confirmed against real Volve WITSML trajectory files —
+# see ingestion/witsml.py). Stripped before the alnum-only reduction below
+# so it matches the same wellbore's SODIR/Volve-CSV spelling, per this
+# function's own documented contract (next line).
+_LEADING_COUNTRY_PREFIX = re.compile(r"^\s*NO\s+", re.IGNORECASE)
+
 
 def canonical_wellbore_key(raw: str) -> str:
     """"15/9-F-11 A", "15_9_F_11_A" and "NO 15/9-F-11 A" all -> "159F11A"."""
-    return _NON_ALNUM.sub("", raw).upper()
+    return _NON_ALNUM.sub("", _LEADING_COUNTRY_PREFIX.sub("", raw)).upper()
 
 
 @dataclass(frozen=True)
@@ -59,3 +66,26 @@ def volve_identifier_from_filename(filename: str) -> WellboreIdentifier:
             stem = stem[: -len(marker)]
             break
     return WellboreIdentifier(raw=stem, source="volve")
+
+
+# Some real Volve WITSML trajectory exports (confirmed against actual
+# files, not guessed) suffix the primary (non-sidetrack) wellbore's
+# <nameWellbore> with a literal, consistent marker rather than a sidetrack
+# letter/leg — e.g. "15/9-F-10 - Main Wellbore". Sidetracks from the same
+# source use their own real suffix (e.g. "T2", " A") and are left alone;
+# only this one confirmed literal marker is stripped.
+_WITSML_MAIN_WELLBORE_SUFFIX = re.compile(r"\s*-\s*Main Wellbore\s*$", re.IGNORECASE)
+
+
+def witsml_identifier_from_name(name_wellbore: str) -> WellboreIdentifier:
+    """"NO 15/9-F-11 T2" -> WellboreIdentifier("15/9-F-11 T2", "volve_witsml");
+    "15/9-F-10 - Main Wellbore" -> WellboreIdentifier("15/9-F-10", "volve_witsml").
+
+    Input is a WITSML <nameWellbore> element's text content, not a
+    filename (real WITSML mirrors name files arbitrarily — see
+    ingestion/witsml.py). The "NO " country-code prefix is left for
+    canonical_wellbore_key to strip; only the "- Main Wellbore" marker
+    (not part of that function's contract) is stripped here.
+    """
+    cleaned = _WITSML_MAIN_WELLBORE_SUFFIX.sub("", name_wellbore.strip())
+    return WellboreIdentifier(raw=cleaned, source="volve_witsml")

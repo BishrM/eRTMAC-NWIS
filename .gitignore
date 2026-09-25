@@ -34,6 +34,9 @@ data/sodir/*
 !data/volve/
 data/volve/*
 !data/volve/README.md
+!data/volve/witsml/
+data/volve/witsml/*
+!data/volve/witsml/README.md
 
 # IDE
 .vscode/

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<trajectorys xmlns="http://www.witsml.org/schemas/1series" version="1.4.1.1">
+  <trajectory uidWell="da2c7481-6737-4b5e-b430-32d50e69bd9a" uidWellbore="31f506a6-0faf-4b83-be77-ff3864dd9eda" uid="T1">
+    <nameWell>NO 15/9-F-11</nameWell>
+    <nameWellbore>NO 15/9-F-11</nameWellbore>
+    <name>MWD-15/9-F-11</name>
+    <mdMn uom="m">0</mdMn>
+    <mdMx uom="m">500.0</mdMx>
+    <trajectoryStation uid="S0">
+      <md uom="m">0</md>
+      <tvd uom="m">0</tvd>
+      <incl uom="rad">0</incl>
+      <azi uom="rad">0</azi>
+      <dispNs uom="m">0</dispNs>
+      <dispEw uom="m">0</dispEw>
+    </trajectoryStation>
+    <trajectoryStation uid="S1">
+      <md uom="m">145.9</md>
+      <tvd uom="m">145.9</tvd>
+      <incl uom="rad">0</incl>
+      <azi uom="rad">0</azi>
+      <dispNs uom="m">4.65</dispNs>
+      <dispEw uom="m">-0.93</dispEw>
+    </trajectoryStation>
+    <trajectoryStation uid="S2">
+      <md uom="m">500.0</md>
+      <tvd uom="m">497.2</tvd>
+      <incl uom="rad">0.12</incl>
+      <azi uom="rad">3.9</azi>
+      <dispNs uom="m">12.3</dispNs>
+      <dispEw uom="m">-6.1</dispEw>
+    </trajectoryStation>
+  </trajectory>
+</trajectorys>

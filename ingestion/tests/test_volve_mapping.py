@@ -38,11 +38,11 @@ def test_canonical_key_matches_across_separator_conventions(a, b):
     assert canonical_wellbore_key(a) == canonical_wellbore_key(b)
 
 
-def test_canonical_key_does_not_strip_witsml_country_prefix():
-    # WITSML headers use a "NO " (Norway) prefix (see VOLVE_AUDIT.md) —
-    # we don't parse that source yet, so no normalization rule for it
-    # exists; document the current (non-)behavior rather than assume it.
-    assert canonical_wellbore_key("NO 15/9-F-11 A") != canonical_wellbore_key("15/9-F-11 A")
+def test_canonical_key_strips_witsml_country_prefix():
+    # WITSML headers use a "NO " (Norway) prefix (see VOLVE_AUDIT.md and
+    # real WITSML trajectory files in ingestion/witsml.py) — must match
+    # the same wellbore's SODIR/Volve-CSV spelling, which has no prefix.
+    assert canonical_wellbore_key("NO 15/9-F-11 A") == canonical_wellbore_key("15/9-F-11 A")
 
 
 def test_canonical_key_does_not_collapse_different_wellbores():

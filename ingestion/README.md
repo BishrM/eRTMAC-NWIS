@@ -119,6 +119,42 @@ separately mapped: Volve's wells are the same NPD/SODIR-registered wells
 Volve only adds the detailed survey (and, later, daily/report documents)
 on top of a wellbore SODIR already created.
 
+## Volve → Wellbore (WITSML trajectory files)
+
+A second real Volve survey export format, in addition to the CSV above —
+`ingestion/witsml.py` parses WITSML 1.4.1.1 `<trajectorys>` XML (one or
+more `<trajectoryStation>`-bearing `<trajectory>` elements per file).
+Same target fields (`md`/`tvd`/`dispNs`/`dispEw`, straight from source,
+no incl/azi reconstruction) and the same `attach_volve_survey` loader —
+only the parser and identifier source differ:
+
+- The wellbore identifier comes from the `<nameWellbore>` element's text,
+  not the filename (real files' filenames are unreliable — one inspected
+  file named `9-F-1 C.xml` actually contains wellbore `15/9-F-1 B`; see
+  `data/volve/witsml/README.md`).
+- Real WITSML headers prefix the name with a country code (`"NO 15/9-F-11
+  A"`) — `canonical_wellbore_key` strips this (this was already the
+  function's documented contract; the implementation had a gap, fixed
+  alongside this ingestion round).
+- One real mirror's exporter instead suffixes the primary bore with a
+  literal `"- Main Wellbore"` marker — stripped by
+  `ingestion/identifiers.py:witsml_identifier_from_name` specifically
+  (not a general cross-source convention, so not inside
+  `canonical_wellbore_key`).
+- Real WITSML data includes technical sidetracks (e.g. `"T2"`) not present
+  among SODIR's registered wellbores for that well — `attach_volve_survey`
+  rejects these the same way it rejects any unmatched identifier (raises
+  `IngestionError`), never force-matching to the nearest wellbore.
+- Every station's `md`/`tvd`/`dispNs`/`dispEw` must report `uom="m"`
+  (confirmed true of every real file inspected) — a different unit is a
+  hard error, not a silent conversion.
+
+CLI: `python -m ingestion.scripts.ingest_volve_trajectory_witsml <xml paths...>`
+(accepts multiple files/globs; prints per-file/per-trajectory results plus
+a files-found/mapped/unmatched/stations summary). See
+`data/volve/witsml/README.md` for exact file provenance and the known
+unmatched-sidetrack case.
+
 ## Expected missing/optional fields
 
 - `wlbField` — blank for wildcats before a discovery is named.
@@ -134,7 +170,7 @@ source backend/.venv/bin/activate
 python -m pytest ingestion/tests -v
 ```
 
-- `test_sodir_mapping.py`, `test_volve_mapping.py` — pure parsing/validation, no DB, run against the fixtures in `tests/fixtures/` (small, realistically-shaped, explicitly **not** real downloaded data).
+- `test_sodir_mapping.py`, `test_volve_mapping.py`, `test_witsml_mapping.py` — pure parsing/validation, no DB, run against the fixtures in `tests/fixtures/` (small, realistically-shaped, explicitly **not** real downloaded data).
 - `test_loaders.py` — exercises the DB upsert path (idempotency, the "Volve survey needs an existing wellbore" guard) against the same `nwis_test` Postgres/PostGIS database `backend/tests` uses. Requires `docker compose up -d`.
 
 ## Explicitly not built here
