@@ -1,0 +1,3 @@
+wellbore,event_type,depth_md_m,depth_tvd_m,occurred_at,severity,description,source_document_id,source_location,confidence,source,source_event_id,extra_metadata
+15/9-F-11 A,stuck_pipe,3200,3050,2013-05-20,high,"SYNTHETIC TEST DATA: pipe became stuck while tripping out of hole.",00000000-0000-0000-0000-000000000000,p.4 activity 2,0.9,demo,demo-evt-0001,"{""mud_weight_sg"": 1.32}"
+15/9-F-11,lost_circulation,2100,,2013-04-02,,"SYNTHETIC TEST DATA: partial losses while drilling 12.25in section.",00000000-0000-0000-0000-000000000000,p.2 activity 1,,demo,demo-evt-0002,

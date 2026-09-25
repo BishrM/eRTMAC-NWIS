@@ -86,6 +86,23 @@ def optional_date_ddmmyyyy(
         return None
 
 
+def optional_date_iso(
+    raw: str | None, field_name: str, issues: list[IngestionIssue]
+) -> date | None:
+    """ISO YYYY-MM-DD — the event-ingestion intermediate format's own date
+    convention (ingestion/events.py), not a source-specific one."""
+    value = (raw or "").strip()
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        issues.append(
+            IngestionIssue(field_name, f"'{value}' is not a valid YYYY-MM-DD date", "error")
+        )
+        return None
+
+
 def check_ncs_plausibility(
     latitude: float, longitude: float, issues: list[IngestionIssue]
 ) -> None:

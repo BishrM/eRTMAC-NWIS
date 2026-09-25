@@ -78,3 +78,43 @@ class VolveSurveyIngestionResult:
     def ok(self) -> bool:
         has_errors = any(i.severity == "error" for i in self.issues)
         return len(self.stations) > 0 and not has_errors
+
+
+@dataclass
+class NormalizedEvent:
+    """A structured historical drilling event, not yet loaded into the DB.
+
+    `wellbore_identifier` is matched to an existing Wellbore by canonical
+    key (ingestion/identifiers.py), the same pattern Volve survey
+    attachment uses — never a raw FK, since the source format (eventually
+    Volve DDR/XML) won't carry our internal UUIDs. `event_type` and
+    `severity` are plain strings (the enum *values*), validated against
+    the real app.models.event enums in ingestion/events.py — this module
+    stays free of any app.* import, matching every other schema here.
+    """
+
+    wellbore_identifier: str
+    event_type: str
+    depth_md_m: float | None
+    depth_tvd_m: float | None
+    occurred_at: date | None
+    severity: str | None
+    description: str
+    source_document_id: str  # UUID string of an existing SourceDocument
+    source_location: str
+    confidence: float | None
+    source: str  # provenance tag, e.g. "volve_ddr", "demo"
+    source_event_id: str  # stable external id — the upsert/dedup key
+    extra_metadata: dict | None = None
+
+
+@dataclass
+class EventIngestionResult:
+    row_index: int
+    event: NormalizedEvent | None
+    issues: list[IngestionIssue] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        has_errors = any(i.severity == "error" for i in self.issues)
+        return self.event is not None and not has_errors

@@ -4,10 +4,13 @@ from pathlib import Path
 import pytest
 from geoalchemy2.shape import to_shape
 
-from ingestion.loaders import IngestionError, attach_volve_survey, ingest_sodir_result
+from ingestion.events import parse_event_row, parse_events_csv
+from ingestion.loaders import IngestionError, attach_volve_survey, ingest_event_result, ingest_sodir_result
 from ingestion.sodir import parse_sodir_csv
 from ingestion.volve import parse_volve_survey_csv
 from ingestion.witsml import parse_witsml_trajectory_xml
+from app.models.document import DocumentType, SourceDocument
+from app.models.event import Event, EventSeverity, EventType
 from app.models.well import Well
 from app.models.wellbore import Wellbore
 
@@ -18,6 +21,7 @@ WITSML_MAIN_WELLBORE_FIXTURE = Path(__file__).parent / "fixtures" / "witsml_traj
 WITSML_UNMATCHED_SIDETRACK_FIXTURE = (
     Path(__file__).parent / "fixtures" / "witsml_trajectory_unmatched_sidetrack.xml"
 )
+EVENTS_FIXTURE = Path(__file__).parent / "fixtures" / "events_sample.csv"
 
 
 def _ingest_sodir_wellbore(db_session, wellbore_name: str):
@@ -202,3 +206,135 @@ def test_attach_witsml_survey_is_idempotent(db_session):
 
     wellbores = db_session.query(Wellbore).filter_by(name="15/9-F-11").all()
     assert len(wellbores) == 1
+
+
+# --- structured historical drilling-event ingestion (Milestone 5) -----------
+#
+# All description text below is prefixed "SYNTHETIC TEST DATA" — no real
+# historical event data exists yet (Volve DDR/PDF ingestion is future work).
+
+
+def _make_source_document(db_session, well) -> SourceDocument:
+    doc = SourceDocument(
+        well_id=well.id,
+        title="SYNTHETIC TEST DATA: placeholder daily report",
+        doc_type=DocumentType.DAILY_REPORT,
+        uri="test://synthetic/placeholder.pdf",
+        source="demo",
+    )
+    db_session.add(doc)
+    db_session.flush()
+    return doc
+
+
+def _event_result_for(db_session, well, **row_overrides):
+    """A real parsed EventIngestionResult from the fixture CSV, with
+    source_document_id swapped for a real row created in this test's
+    transaction (a static CSV fixture can't know that UUID ahead of time)."""
+    doc = _make_source_document(db_session, well)
+    row = dict(
+        wellbore="15/9-F-11 A",
+        event_type="stuck_pipe",
+        depth_md_m="3200",
+        depth_tvd_m="3050",
+        occurred_at="2013-05-20",
+        severity="high",
+        description="SYNTHETIC TEST DATA: pipe became stuck while tripping out of hole.",
+        source_document_id=str(doc.id),
+        source_location="p.4 activity 2",
+        confidence="0.9",
+        source="demo",
+        source_event_id="demo-evt-0001",
+        extra_metadata='{"mud_weight_sg": 1.32}',
+    )
+    row.update(row_overrides)
+    return parse_event_row(row, 0)
+
+
+def test_ingest_event_attaches_to_correct_wellbore_and_document(db_session):
+    well, _ = _ingest_sodir_wellbore(db_session, "15/9-F-11")
+    _, wellbore_a = _ingest_sodir_wellbore(db_session, "15/9-F-11 A")
+    result = _event_result_for(db_session, well)
+
+    event = ingest_event_result(db_session, result)
+
+    assert event.wellbore_id == wellbore_a.id
+    assert event.well_id == well.id
+    assert event.event_type == EventType.STUCK_PIPE
+    assert event.severity == EventSeverity.HIGH
+    assert event.depth_md_m == 3200
+    assert event.depth_tvd_m == 3050
+    assert event.occurred_at.isoformat() == "2013-05-20"
+    assert event.confidence == 0.9
+    assert event.source == "demo"
+    assert event.source_event_id == "demo-evt-0001"
+    assert event.extra_metadata == {"mud_weight_sg": 1.32}
+    assert event.description.startswith("SYNTHETIC TEST DATA")
+
+
+def test_ingest_event_without_matching_wellbore_raises(db_session):
+    well, _ = _ingest_sodir_wellbore(db_session, "15/9-F-11")
+    doc = _make_source_document(db_session, well)
+    result = parse_event_row(
+        {
+            "wellbore": "15/9-F-11 A",  # not ingested — doesn't exist yet
+            "event_type": "stuck_pipe",
+            "description": "SYNTHETIC TEST DATA: unmatched wellbore case.",
+            "source_document_id": str(doc.id),
+            "source_location": "p.1",
+            "source": "demo",
+            "source_event_id": "demo-evt-unmatched",
+        },
+        0,
+    )
+    with pytest.raises(IngestionError, match="no existing wellbore matches"):
+        ingest_event_result(db_session, result)
+
+
+def test_ingest_event_with_unknown_source_document_raises(db_session):
+    well, _ = _ingest_sodir_wellbore(db_session, "15/9-F-11")
+    _ingest_sodir_wellbore(db_session, "15/9-F-11 A")
+    result = _event_result_for(db_session, well, source_document_id="00000000-0000-0000-0000-000000000000")
+
+    with pytest.raises(IngestionError, match="no SourceDocument"):
+        ingest_event_result(db_session, result)
+
+
+def test_ingest_event_is_idempotent(db_session):
+    well, _ = _ingest_sodir_wellbore(db_session, "15/9-F-11")
+    _ingest_sodir_wellbore(db_session, "15/9-F-11 A")
+    result = _event_result_for(db_session, well)
+
+    ingest_event_result(db_session, result)
+    ingest_event_result(db_session, result)  # re-run, same source_event_id
+
+    events = db_session.query(Event).filter_by(source_event_id="demo-evt-0001").all()
+    assert len(events) == 1
+
+
+def test_ingest_event_rejects_unresolved_validation_errors(db_session):
+    well, _ = _ingest_sodir_wellbore(db_session, "15/9-F-11")
+    _ingest_sodir_wellbore(db_session, "15/9-F-11 A")
+    result = _event_result_for(db_session, well, event_type="not_a_supported_type")
+
+    assert not result.ok
+    with pytest.raises(IngestionError, match="unresolved validation errors"):
+        ingest_event_result(db_session, result)
+
+
+def test_ingest_events_csv_fixture_end_to_end(db_session):
+    # The fixture's two rows target "15/9-F-11 A" and "15/9-F-11" — both
+    # must exist first, same prerequisite as Volve survey attachment.
+    well, wellbore_a = _ingest_sodir_wellbore(db_session, "15/9-F-11 A")
+    well_base, wellbore_base = _ingest_sodir_wellbore(db_session, "15/9-F-11")
+    doc = _make_source_document(db_session, well)
+
+    results = parse_events_csv(EVENTS_FIXTURE)
+    assert all(r.ok for r in results)
+    for r in results:
+        r.event.source_document_id = str(doc.id)  # see _event_result_for's note above
+
+    events = [ingest_event_result(db_session, r) for r in results]
+
+    assert {e.wellbore_id for e in events} == {wellbore_a.id, wellbore_base.id}
+    assert {e.event_type for e in events} == {EventType.STUCK_PIPE, EventType.LOST_CIRCULATION}

@@ -4,6 +4,7 @@ database.
 """
 
 import math
+import uuid
 
 from ingestion import _backend_path  # noqa: F401  (wires sys.path before the app.* imports below)
 
@@ -12,12 +13,20 @@ from shapely.geometry import LineString, Point
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.document import SourceDocument
+from app.models.event import Event, EventSeverity, EventType
 from app.models.well import Well
 from app.models.wellbore import Wellbore
 from app.services.geo import point_to_lonlat
 
 from ingestion.identifiers import canonical_wellbore_key
-from ingestion.schemas import NormalizedWell, NormalizedWellbore, SodirIngestionResult, VolveSurveyIngestionResult
+from ingestion.schemas import (
+    EventIngestionResult,
+    NormalizedWell,
+    NormalizedWellbore,
+    SodirIngestionResult,
+    VolveSurveyIngestionResult,
+)
 
 # Mean Earth radius, for a local equirectangular NS/EW-offset -> lon/lat
 # approximation. Not survey-grade, but consistent with the accuracy bar
@@ -143,3 +152,55 @@ def attach_volve_survey(db: Session, result: VolveSurveyIngestionResult) -> Well
 
     db.flush()
     return wellbore
+
+
+def ingest_event_result(db: Session, result: EventIngestionResult) -> Event:
+    """Upserts a structured historical drilling event (ingestion/events.py)
+    by `source_event_id` — idempotent re-ingestion, same pattern as
+    Wellbore.npdid_wellbore. Requires the referenced wellbore and source
+    document to already exist; never creates either (out of scope here —
+    see ingestion/events.py's module docstring)."""
+    if not result.ok:
+        errors = [i for i in result.issues if i.severity == "error"]
+        raise IngestionError(f"row {result.row_index}: unresolved validation errors: {errors}")
+
+    normalized = result.event
+    wellbore = _find_wellbore_by_canonical_key(
+        db, canonical_wellbore_key(normalized.wellbore_identifier), normalized.wellbore_identifier
+    )
+
+    try:
+        source_document_uuid = uuid.UUID(normalized.source_document_id)
+    except ValueError as e:
+        raise IngestionError(f"'{normalized.source_document_id}' is not a valid source_document_id: {e}")
+
+    source_document = db.get(SourceDocument, source_document_uuid)
+    if source_document is None:
+        raise IngestionError(
+            f"no SourceDocument with id '{normalized.source_document_id}' — "
+            "create/ingest the source document first"
+        )
+
+    event = db.execute(
+        select(Event).where(Event.source_event_id == normalized.source_event_id)
+    ).scalar_one_or_none()
+    if event is None:
+        event = Event(source_event_id=normalized.source_event_id)
+        db.add(event)
+
+    event.well_id = wellbore.well_id
+    event.wellbore_id = wellbore.id
+    event.source_document_id = source_document.id
+    event.event_type = EventType(normalized.event_type)
+    event.severity = EventSeverity(normalized.severity) if normalized.severity else None
+    event.depth_md_m = normalized.depth_md_m
+    event.depth_tvd_m = normalized.depth_tvd_m
+    event.occurred_at = normalized.occurred_at
+    event.description = normalized.description
+    event.source_location = normalized.source_location
+    event.confidence = normalized.confidence
+    event.source = normalized.source
+    event.extra_metadata = normalized.extra_metadata
+
+    db.flush()
+    return event

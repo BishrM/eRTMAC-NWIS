@@ -155,6 +155,45 @@ a files-found/mapped/unmatched/stations summary). See
 `data/volve/witsml/README.md` for exact file provenance and the known
 unmatched-sidetrack case.
 
+## Structured historical drilling events (Milestone 5)
+
+`ingestion/events.py` defines the **ingestion contract** for structured
+historical drilling events — not an extractor. No raw Volve DDR/PDF data
+has been ingested yet (out of scope this milestone); this module defines
+the plain-dict shape a future DDR-XML/report parser must produce, and
+validates/loads it exactly the same way regardless of source. Only four
+event types are accepted for now (`stuck_pipe`, `lost_circulation`,
+`kick_influx`, `wellbore_instability`) — `app.models.event.EventType` has
+more (`bha_equipment_issue`, `npt`, `other`) reserved for later, rejected
+here until an actual, validated extraction method exists for them.
+
+| Field | Required? | Notes |
+|---|---|---|
+| `wellbore` | required | matched to an existing `Wellbore` by canonical key (`ingestion/identifiers.py`) — same pattern as Volve survey attachment |
+| `event_type` | required | one of `SUPPORTED_EVENT_TYPES` |
+| `depth_md_m`, `depth_tvd_m` | optional | ≥0; TVD > MD is a warning, not an error |
+| `occurred_at` | optional | `YYYY-MM-DD` (this format's own contract, not SODIR's `DD.MM.YYYY`) |
+| `severity` | optional | one of `EventSeverity` (`low`/`medium`/`high`/`critical`) — only ever the source's own stated severity, never inferred |
+| `description` | required | the evidence text itself — an event with no description isn't evidence-backed |
+| `source_document_id` | required | UUID of an existing `SourceDocument` row — must already exist, never created here |
+| `source_location` | required | e.g. "p.4 activity 2" — the source reference |
+| `confidence` | optional | `[0, 1]` |
+| `source` | required | provenance tag, e.g. `"volve_ddr"`, `"demo"` for test data |
+| `source_event_id` | required | stable external id — the upsert/dedup key (`Event.source_event_id`, unique) |
+| `extra_metadata` | optional | any JSON object, passed through as-is (`Event.extra_metadata`, JSONB) — for fields not worth their own column yet |
+
+CLI: `python -m ingestion.scripts.ingest_events_csv <events.csv>` (safe to
+re-run — upserts by `source_event_id`). `ingestion/loaders.py:
+ingest_event_result` raises `IngestionError` if the wellbore doesn't
+resolve to exactly one match or the source document doesn't exist —
+never fabricates either.
+
+**Schema changes**: `Event.source` (required, provenance — same
+convention as `Well.source`/`Wellbore.source`), `Event.source_event_id`
+(nullable, unique — the ingestion dedup key), `Event.severity`
+(nullable, new `EventSeverity` enum), `Event.extra_metadata` (nullable
+JSONB) — migration `84855f85f8ac_extend_events_for_structured_historical_`.
+
 ## Expected missing/optional fields
 
 - `wlbField` — blank for wildcats before a discovery is named.
@@ -170,10 +209,12 @@ source backend/.venv/bin/activate
 python -m pytest ingestion/tests -v
 ```
 
-- `test_sodir_mapping.py`, `test_volve_mapping.py`, `test_witsml_mapping.py` — pure parsing/validation, no DB, run against the fixtures in `tests/fixtures/` (small, realistically-shaped, explicitly **not** real downloaded data).
+- `test_sodir_mapping.py`, `test_volve_mapping.py`, `test_witsml_mapping.py`, `test_events_mapping.py` — pure parsing/validation, no DB, run against the fixtures in `tests/fixtures/` (small, realistically-shaped, explicitly **not** real downloaded data).
 - `test_loaders.py` — exercises the DB upsert path (idempotency, the "Volve survey needs an existing wellbore" guard) against the same `nwis_test` Postgres/PostGIS database `backend/tests` uses. Requires `docker compose up -d`.
 
 ## Explicitly not built here
 
-Similarity, frontend, OCR, RAG, trajectory geometry computation, ED50
-coordinate transform, real data download — all deferred per scope.
+Frontend, OCR, RAG/LLM reasoning, predictive risk models, and any actual
+event *extraction* from raw Volve DDR/PDF/report data (only the
+structured event-ingestion contract and loader exist so far — see
+"Structured historical drilling events" above) — all deferred per scope.
