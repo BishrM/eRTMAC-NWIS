@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.routes import health, wells
+from app.routes import health, historical_events, wells
 
 app = FastAPI(
     title="eRTMAC-NWIS API",
@@ -10,3 +10,4 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(wells.router)
+app.include_router(historical_events.router)

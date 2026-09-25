@@ -238,6 +238,72 @@ for data-quality reasons (dates/depths/comments were clean across every
 matched activity in this corpus). See `ingestion/VOLVE_DDR_AUDIT.md` and
 the Milestone 7 report for full detail.
 
+## Source-evidence retrieval (Milestone 9)
+
+`backend/app/services/evidence_service.py` retrieves the actual source
+evidence for one historical Event, given its stable `source_event_id`
+(e.g. `volve_ddr:15_9_F_1_2013_08_23:act023`) — an exact-equality DB
+lookup on the unique `Event.source_event_id` column, **never** a
+string/keyword match against `description`. It performs no network
+access, no filesystem access, and no new text extraction: it exposes
+exactly what ingestion already wrote to the row at ingestion time.
+
+**What evidence is actually available, from the audited derivative
+(see `VOLVE_DDR_AUDIT.md`):** for every Volve-DDR-sourced event,
+`Event.description` already *is* the real `activity[].comments` text,
+captured verbatim by `ingestion/volve_ddr.py` — there is no separate
+raw-corpus store to re-fetch from, and none is needed. Depth
+(`activity.md`), date (`activity.dTimStart`/`dTimEnd`), document
+identity (`docName`), and activity reference (source_location) are all
+structured fields already on the row. `extract_candidate_events`
+rejects any activity with no `comments` text before it ever becomes an
+Event (see that module's "no evidence to store, rejected" path) — so
+every ingested `volve_ddr_hf_derivative` event has real text available.
+A future, different source type could still load an Event with no
+`description` (e.g. a metadata-only manual entry); the evidence layer
+reports that case as `evidence_type="metadata_only"` rather than
+inventing text.
+
+**Provenance chain preserved explicitly, never conflated:**
+original Equinor WITSML `DrillReport` corpus (not directly accessible
+from this environment) → the public CC-BY-4.0 `bengsoon/
+volve_daily_drilling_report` Hugging Face derivative actually used →
+one `SourceDocument` row per real DDR (`hf://...#docName=...`, titled
+"... (public derivative, not the original WITSML file)") → one `Event`
+row per matched activity → the evidence response's `provenance` object,
+which always sets `derivative_is_original_source=False`.
+
+API: `GET /historical-events/{source_event_id}/evidence`
+(`backend/app/routes/historical_events.py`). Malformed identifiers
+(empty, over 128 chars, or containing characters no id minted by this
+project's own ingestion code would ever contain) are rejected with 422
+before any DB query; an unknown but well-formed id is a clean 404 — see
+`evidence_service.is_well_formed_source_event_id`. Since
+`source_event_id` is a DB-level unique column, a lookup can never
+resolve to more than one row (no duplicate evidence is possible by
+construction), and repeated lookups are deterministic. The lookup is a
+single query with `well`/`wellbore`/`source_document` eager-loaded
+(`joinedload`) — no N+1, verified directly against the real dev DB.
+
+**Existing `GET /wells/{well_id}/historical-events` response left
+unchanged.** It already carries a compact evidence reference per event
+(`description`, `source_document_title`, `source_location`, `source`,
+`source_event_id`, `confidence`) drawn from the same single query as
+the rest of that response — not a second per-event fetch. A caller that
+wants the fuller structured `provenance` breakdown follows
+`source_event_id` to the dedicated evidence endpoint above, rather than
+that being embedded (and duplicated across possibly-many events sharing
+one document) into every list entry.
+
+**Limitations:** no page-level provenance exists in this source (DDRs
+aren't paginated — see `VOLVE_DDR_AUDIT.md` section E); this layer
+cannot provide it either. Only the two DDR-sourced event types
+(`stuck_pipe`, `lost_circulation`) currently have real evidence to
+retrieve — same scope limit as Milestone 7. This is a deterministic
+retrieval layer only, not a RAG/semantic-search system: a future AI
+layer may consume `evidence_text` to summarize/explain, but must not
+bypass this layer to reconstruct evidence itself.
+
 ## Expected missing/optional fields
 
 - `wlbField` — blank for wildcats before a discovery is named.
