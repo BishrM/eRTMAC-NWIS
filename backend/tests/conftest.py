@@ -111,3 +111,30 @@ def make_well(db_session: Session):
         return well
 
     return _make
+
+
+@pytest.fixture()
+def make_wellbore(db_session: Session):
+    """Factory for a Wellbore under a given Well, optionally with a real
+    LineString trajectory (a list of (lon, lat) points)."""
+    from geoalchemy2.shape import from_shape
+    from shapely.geometry import LineString
+
+    from app.models.wellbore import Wellbore
+
+    def _make(well, trajectory_points: list[tuple[float, float]] | None = None, **overrides):
+        defaults = dict(
+            well_id=well.id,
+            name=overrides.pop("name", f"{well.well_id} (demo bore)"),
+            source=well.source,
+        )
+        if trajectory_points is not None:
+            defaults["trajectory"] = from_shape(LineString(trajectory_points), srid=4326)
+        defaults.update(overrides)
+        wellbore = Wellbore(**defaults)
+        db_session.add(wellbore)
+        db_session.commit()
+        db_session.refresh(wellbore)
+        return wellbore
+
+    return _make
