@@ -159,7 +159,10 @@ unmatched-sidetrack case.
 
 `ingestion/events.py` defines the **ingestion contract** for structured
 historical drilling events — not an extractor. No raw Volve DDR/PDF data
-has been ingested yet (out of scope this milestone); this module defines
+has been ingested yet; a real, public DDR source has since been located
+and audited (`ingestion/VOLVE_DDR_AUDIT.md`) but not yet ingested — that
+audit's "recommended next step" is the concrete extraction path for a
+future milestone. This module defines
 the plain-dict shape a future DDR-XML/report parser must produce, and
 validates/loads it exactly the same way regardless of source. Only four
 event types are accepted for now (`stuck_pipe`, `lost_circulation`,
@@ -194,6 +197,47 @@ convention as `Well.source`/`Wellbore.source`), `Event.source_event_id`
 (nullable, new `EventSeverity` enum), `Event.extra_metadata` (nullable
 JSONB) — migration `84855f85f8ac_extend_events_for_structured_historical_`.
 
+## Volve DDR event extraction (Milestone 7)
+
+`ingestion/volve_ddr.py` extracts real historical drilling events from
+the public `bengsoon/volve_daily_drilling_report` Hugging Face dataset —
+a CC-BY-4.0 structural (JSON) conversion of the real Volve WITSML
+`DrillReport` corpus, found and audited in `ingestion/VOLVE_DDR_AUDIT.md`.
+It maps exactly one real, controlled-vocabulary field,
+`activity[].stateDetailActivity`, onto our event vocabulary — never
+free text (Milestone 6 directly tested keyword matching on this corpus
+and found it unreliable: 562 loose matches vs. 21 verified real
+incidents in the same sample):
+
+| `stateDetailActivity` | → `EventType` |
+|---|---|
+| `circulation loss` | `LOST_CIRCULATION` |
+| `mud loss` | `LOST_CIRCULATION` |
+| `stuck equipment` | `STUCK_PIPE` |
+
+Everything else (`success`, `equipment failure`, `operation failed`,
+`injury`, ...) is left alone — not an event, not an error, just outside
+this milestone's scope. `extract_candidate_events` is a pure function
+(no network/DB) feeding the *existing, unchanged* event-ingestion
+pipeline (`parse_event_row` → `ingest_event_result`); the CLI,
+`python -m ingestion.scripts.ingest_volve_ddr_events [--max-records N]
+[--dry-run]`, fetches the full 1,759-record corpus via Hugging Face's
+public `datasets-server` REST API (no auth, no bulk file download) and
+adds one new minimal helper, `loaders.py:find_or_create_source_document`
+(find-or-create by `uri` — a `SourceDocument` per real DDR, honestly
+tagged `hf://bengsoon/...#docName=...`, never presented as the original
+WITSML file). Safe to re-run (`Event.source_event_id` is deterministic:
+`volve_ddr:<docName>:act<NNN>`, never a random UUID).
+
+Real run against the dev DB (2026-09-26): 213/23,447 activities matched
+a supported value; 204 became events (97 `lost_circulation`, 107
+`stuck_pipe`) across 8 real wellbores; 9 rejected (real WITSML technical
+sidetracks — `T2`/`BT2`/`ST2` — with no matching SODIR wellbore, same
+pattern already seen in Milestone 3's trajectory ingestion); 0 rejected
+for data-quality reasons (dates/depths/comments were clean across every
+matched activity in this corpus). See `ingestion/VOLVE_DDR_AUDIT.md` and
+the Milestone 7 report for full detail.
+
 ## Expected missing/optional fields
 
 - `wlbField` — blank for wildcats before a discovery is named.
@@ -209,12 +253,13 @@ source backend/.venv/bin/activate
 python -m pytest ingestion/tests -v
 ```
 
-- `test_sodir_mapping.py`, `test_volve_mapping.py`, `test_witsml_mapping.py`, `test_events_mapping.py` — pure parsing/validation, no DB, run against the fixtures in `tests/fixtures/` (small, realistically-shaped, explicitly **not** real downloaded data).
-- `test_loaders.py` — exercises the DB upsert path (idempotency, the "Volve survey needs an existing wellbore" guard) against the same `nwis_test` Postgres/PostGIS database `backend/tests` uses. Requires `docker compose up -d`.
+- `test_sodir_mapping.py`, `test_volve_mapping.py`, `test_witsml_mapping.py`, `test_events_mapping.py`, `test_volve_ddr.py` — pure parsing/validation, no DB, run against the fixtures in `tests/fixtures/` (small, realistically-shaped — explicitly synthetic except `volve_ddr_real_sample_15_9_F_4_2008_02_19.json`, a real CC-BY-4.0 DDR record, labeled as such).
+- `test_loaders.py`, `test_volve_ddr_loader.py` — exercise the DB upsert path (idempotency, the "wellbore must already exist" guard) against the same `nwis_test` Postgres/PostGIS database `backend/tests` uses. Requires `docker compose up -d`.
 
 ## Explicitly not built here
 
-Frontend, OCR, RAG/LLM reasoning, predictive risk models, and any actual
-event *extraction* from raw Volve DDR/PDF/report data (only the
-structured event-ingestion contract and loader exist so far — see
-"Structured historical drilling events" above) — all deferred per scope.
+Frontend, OCR, RAG/LLM reasoning, predictive risk models, free-text
+event classification (only the one controlled-vocabulary field is
+trusted — see Milestone 7 above), and PDF final-well-report extraction
+(no accessible PDF source found per `VOLVE_DDR_AUDIT.md`) — all
+deferred per scope.

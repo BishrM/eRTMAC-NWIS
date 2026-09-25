@@ -1,0 +1,163 @@
+{
+  "docName": "15_9_F_4_2008_02_19",
+  "nameWell": "NO 15/9-F-4",
+  "nameWellbore": "NO 15/9-F-4",
+  "wellAlias": {
+    "name": "15/9-F-4",
+    "namingSystem": "NPD code"
+  },
+  "dTimStart": "2008-02-18T00:00:00+01:00",
+  "dTimEnd": "2008-02-19T00:00:00+01:00",
+  "activity": [
+    {
+      "comments": "General alarm - crews mustered according to list. Announced possible gas in wellhead area. Removed WL toolstring from well - well stable - stood by for securing well. Investigated alarm and found fault on gas sensor. Resumed work.",
+      "dTimEnd": "2008-02-18T00:30:00+01:00",
+      "dTimStart": "2008-02-18T00:00:00+01:00",
+      "md": "0",
+      "phase": "wire line",
+      "proprietaryCode": "workover -- wait",
+      "state": "ok",
+      "stateDetailActivity": "success"
+    },
+    {
+      "comments": "Continued isolating and checking MDT string components as required.",
+      "dTimEnd": "2008-02-18T03:15:00+01:00",
+      "dTimStart": "2008-02-18T00:30:00+01:00",
+      "md": "0",
+      "phase": "fixed",
+      "proprietaryCode": "interruption -- repair",
+      "state": "ok",
+      "stateDetailActivity": "equipment failure"
+    },
+    {
+      "comments": "Found both MRPO pumps in MDT toolstring to be faulty. Only one back up MRPO pump available on rig. Discussed situation. Decided to run simplified string with only 1 pump.",
+      "dTimEnd": "2008-02-18T03:30:00+01:00",
+      "dTimStart": "2008-02-18T03:15:00+01:00",
+      "md": "0",
+      "phase": "fixed",
+      "proprietaryCode": "interruption -- repair",
+      "state": "ok",
+      "stateDetailActivity": "equipment failure"
+    },
+    {
+      "comments": "Traced tools for simplifed MDT toolstring. Brought tools to drillfloor. Made up and tested simplified MDT toolstring.",
+      "dTimEnd": "2008-02-18T05:45:00+01:00",
+      "dTimStart": "2008-02-18T03:30:00+01:00",
+      "md": "0",
+      "phase": "fixed",
+      "proprietaryCode": "interruption -- repair",
+      "state": "ok",
+      "stateDetailActivity": "equipment failure"
+    },
+    {
+      "comments": "RIH with simplified MDT toolstring on 7/48 cable.",
+      "dTimEnd": "2008-02-18T06:00:00+01:00",
+      "dTimStart": "2008-02-18T05:45:00+01:00",
+      "md": "0",
+      "phase": "fixed",
+      "proprietaryCode": "interruption -- repair",
+      "state": "ok",
+      "stateDetailActivity": "equipment failure"
+    },
+    {
+      "comments": "RIH witth MDT toolstring on 7/48 cable from surface to 2700 m MD inside 9 5/8\" shoe. Rested MDT toolstring for 30 min to allow for temperature adaption.",
+      "dTimEnd": "2008-02-18T07:30:00+01:00",
+      "dTimStart": "2008-02-18T06:00:00+01:00",
+      "md": "2700",
+      "phase": "fixed",
+      "proprietaryCode": "interruption -- repair",
+      "state": "ok",
+      "stateDetailActivity": "equipment failure"
+    },
+    {
+      "comments": "RIH with MDT toolstring on 7/48\" cable from 2700 m to 3270 m MD.",
+      "dTimEnd": "2008-02-18T08:00:00+01:00",
+      "dTimStart": "2008-02-18T07:30:00+01:00",
+      "md": "3270",
+      "phase": "fixed",
+      "proprietaryCode": "interruption -- repair",
+      "state": "ok",
+      "stateDetailActivity": "equipment failure"
+    },
+    {
+      "comments": "Correlated toolstring and placed MDT probe at 3245 m MD sample point in Heather.",
+      "dTimEnd": "2008-02-18T08:15:00+01:00",
+      "dTimStart": "2008-02-18T08:00:00+01:00",
+      "md": "3245",
+      "phase": "fixed",
+      "proprietaryCode": "interruption -- repair",
+      "state": "ok",
+      "stateDetailActivity": "equipment failure"
+    },
+    {
+      "comments": "Obatined pressure point sample at 3245 m MD in Heather. Attmepted to RIH - cable stuck with MDT at 3345 m MD.",
+      "dTimEnd": "2008-02-18T09:30:00+01:00",
+      "dTimStart": "2008-02-18T08:15:00+01:00",
+      "md": "3245",
+      "phase": "fixed",
+      "proprietaryCode": "formation evaluation -- log",
+      "state": "ok",
+      "stateDetailActivity": "success"
+    },
+    {
+      "comments": "Worked MDT toolstring and found string to be stuck. No tension on cable head observed when pulling surface tension of max pull 12000 llbs - wire probably stuck/keyseated in formation. Depth on mechanical counter 3233 m MD.",
+      "dTimEnd": "2008-02-18T10:15:00+01:00",
+      "dTimStart": "2008-02-18T09:30:00+01:00",
+      "md": "3245",
+      "phase": "fixed",
+      "proprietaryCode": "formation evaluation -- log",
+      "state": "ok",
+      "stateDetailActivity": "success"
+    },
+    {
+      "comments": "Continued to work WL with max 12000 lbs pull. Observed movement of WL unit. Secured WL unit with chains. Checked sheave wheels on drillfloor.",
+      "dTimEnd": "2008-02-18T12:00:00+01:00",
+      "dTimStart": "2008-02-18T10:15:00+01:00",
+      "md": "3245",
+      "phase": "fixed",
+      "proprietaryCode": "interruption -- fish",
+      "state": "ok",
+      "stateDetailActivity": "stuck equipment"
+    },
+    {
+      "comments": "Put 12000 lbs tension in WL and put on brake. Depth on mechancial counter 3232 m MD with 12000 lbs tension.",
+      "dTimEnd": "2008-02-18T14:30:00+01:00",
+      "dTimStart": "2008-02-18T12:00:00+01:00",
+      "md": "3245",
+      "phase": "fixed",
+      "proprietaryCode": "interruption -- fish",
+      "state": "ok",
+      "stateDetailActivity": "stuck equipment"
+    },
+    {
+      "comments": "Worked WL several times. Slacked off to 5000 lbs and picked up to max tension 12000 lbs several tiems - not able to make progress. Prepared for doing cut and thread fishing on drillpipe. Prepared fishing procedure. Decided to do fluid sampling at stuck point in Heather prior to fishing.",
+      "dTimEnd": "2008-02-18T22:00:00+01:00",
+      "dTimStart": "2008-02-18T14:30:00+01:00",
+      "md": "3245",
+      "phase": "fixed",
+      "proprietaryCode": "interruption -- fish",
+      "state": "ok",
+      "stateDetailActivity": "stuck equipment"
+    },
+    {
+      "comments": "Pumped to clear tool of mud. Activated MDT probe.",
+      "dTimEnd": "2008-02-18T23:00:00+01:00",
+      "dTimStart": "2008-02-18T22:00:00+01:00",
+      "md": "3245",
+      "phase": "fixed",
+      "proprietaryCode": "formation evaluation -- log",
+      "state": "ok",
+      "stateDetailActivity": "success"
+    },
+    {
+      "comments": "Stepped up MDT pump in increments. Performed MDT sampling at 3245 m MD according to Schlumberger procedure.",
+      "dTimEnd": "2008-02-19T00:00:00+01:00",
+      "dTimStart": "2008-02-18T23:00:00+01:00",
+      "md": "3245",
+      "phase": "fixed",
+      "proprietaryCode": "formation evaluation -- log",
+      "state": "ok",
+      "stateDetailActivity": "success"
+    }
+  ]
+}

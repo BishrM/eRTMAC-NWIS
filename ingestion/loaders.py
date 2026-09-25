@@ -13,7 +13,7 @@ from shapely.geometry import LineString, Point
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.document import SourceDocument
+from app.models.document import DocumentType, SourceDocument
 from app.models.event import Event, EventSeverity, EventType
 from app.models.well import Well
 from app.models.wellbore import Wellbore
@@ -94,7 +94,7 @@ def ingest_sodir_result(db: Session, result: SodirIngestionResult) -> tuple[Well
     return well, wellbore
 
 
-def _find_wellbore_by_canonical_key(db: Session, canonical_key: str, source_identifier: str) -> Wellbore:
+def find_wellbore_by_canonical_key(db: Session, canonical_key: str, source_identifier: str) -> Wellbore:
     """Match a Volve source identifier to exactly one existing Wellbore,
     by canonical key (see ingestion/identifiers.py) — never by guessing
     separator positions in the filename. Raises if zero or more than one
@@ -128,7 +128,7 @@ def attach_volve_survey(db: Session, result: VolveSurveyIngestionResult) -> Well
     if not result.stations:
         raise IngestionError(f"no valid survey stations parsed for '{result.source_identifier}'")
 
-    wellbore = _find_wellbore_by_canonical_key(db, result.canonical_key, result.source_identifier)
+    wellbore = find_wellbore_by_canonical_key(db, result.canonical_key, result.source_identifier)
 
     well = db.get(Well, wellbore.well_id)
     if well is None or well.location is None:
@@ -165,7 +165,7 @@ def ingest_event_result(db: Session, result: EventIngestionResult) -> Event:
         raise IngestionError(f"row {result.row_index}: unresolved validation errors: {errors}")
 
     normalized = result.event
-    wellbore = _find_wellbore_by_canonical_key(
+    wellbore = find_wellbore_by_canonical_key(
         db, canonical_wellbore_key(normalized.wellbore_identifier), normalized.wellbore_identifier
     )
 
@@ -204,3 +204,31 @@ def ingest_event_result(db: Session, result: EventIngestionResult) -> Event:
 
     db.flush()
     return event
+
+
+def find_or_create_source_document(
+    db: Session,
+    *,
+    well_id: uuid.UUID | None,
+    title: str,
+    doc_type: DocumentType,
+    uri: str,
+    source: str,
+) -> SourceDocument:
+    """Minimal find-or-create by `uri` — SourceDocument has no dedicated
+    external-id column (unlike Wellbore.npdid_wellbore / Event.
+    source_event_id), so this is an application-level dedup (a query,
+    not a DB uniqueness constraint), deliberately kept that simple.
+    Used by the Volve DDR event adapter (ingestion/volve_ddr.py) so each
+    real DDR record gets exactly one SourceDocument row across any
+    number of ingestion reruns — not a general document-management
+    subsystem: no content storage, no versioning, nothing beyond what an
+    Event needs to point at a real row."""
+    existing = db.execute(select(SourceDocument).where(SourceDocument.uri == uri)).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    document = SourceDocument(well_id=well_id, title=title, doc_type=doc_type, uri=uri, source=source)
+    db.add(document)
+    db.flush()
+    return document
