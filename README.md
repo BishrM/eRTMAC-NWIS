@@ -37,11 +37,24 @@ uvicorn app.main:app --reload
 pytest                      # run tests (requires docker compose up)
 ```
 
-Endpoints: `GET /health`, `GET /wells`, `GET /wells/{well_id}`.
+Endpoints: `GET /health`, `GET /wells`, `GET /wells/{well_id}`,
+`GET /wells/{well_id}/similar`, `GET /wells/{well_id}/historical-events`,
+`GET /historical-events/{source_event_id}/evidence`.
+
+Frontend (React + TypeScript + Tailwind, Leaflet map) — see `frontend/README.md`:
+
+```
+cd frontend
+npm install
+npm run dev          # http://localhost:5173, requires the backend running
+```
 
 ## Status
 
-Infra (Postgres+PostGIS, Qdrant) and the initial backend data layer are up:
-SQLAlchemy models + Alembic migrations for wells/wellbores/events/source_documents,
-a FastAPI app with health + well list/read endpoints, and tests.
-No frontend, ingestion, OCR, or RAG yet.
+Infra (Postgres+PostGIS, Qdrant), the backend data layer (wells/wellbores/
+events/source_documents), the deterministic well-similarity engine,
+historical-event retrieval, and source-evidence retrieval are all up and
+tested against real public Volve/SODIR data (see `ingestion/README.md`).
+A first end-to-end dashboard (well selection → map → comparable wells →
+historical events → source evidence) is now live in `frontend/`.
+No OCR or RAG/embeddings/LLM yet.
